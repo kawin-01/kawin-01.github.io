@@ -119,6 +119,24 @@
             font-weight: 600;
         }
         
+        .data-controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+            justify-content: center;
+        }
+        
+        .data-btn {
+            background: #ffd700;
+            color: #2d5a27;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 12px;
+        }
+        
         .summary-cards {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -270,6 +288,24 @@
             background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%);
         }
         
+        .save-indicator {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #28a745;
+            color: white;
+            padding: 10px 15px;
+            border-radius: 25px;
+            font-size: 14px;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            z-index: 1000;
+        }
+        
+        .save-indicator.show {
+            opacity: 1;
+        }
+        
         @media (max-width: 768px) {
             .header h1 {
                 font-size: 2em;
@@ -315,6 +351,10 @@
             <div class="admin-panel" id="adminPanel">
                 <input type="password" id="adminPassword" placeholder="รหัสผ่าน">
                 <button onclick="checkAdminPassword()">เข้าสู่ระบบ</button>
+                <div class="data-controls">
+                    <button class="data-btn" onclick="exportData()">📥 ส่งออกข้อมูล</button>
+                    <button class="data-btn" onclick="clearAllData()">🗑️ ลบข้อมูลทั้งหมด</button>
+                </div>
             </div>
         </div>
         
@@ -336,20 +376,101 @@
         <div class="students-grid" id="studentsGrid">
         </div>
     </div>
+    
+    <div class="save-indicator" id="saveIndicator">
+        💾 บันทึกข้อมูลแล้ว
+    </div>
 
     <script>
         let isAdmin = false;
         const adminPassword = "admin123";
+        const STORAGE_KEY = "studentMoneyData";
         
         // ข้อมูลนักเรียน 40 คน
         let students = [];
-        for (let i = 1; i <= 40; i++) {
-            students.push({
-                number: i,
-                paid: 0,
-                debt: 0,
-                loan: 0
-            });
+        
+        // ฟังก์ชันโหลดข้อมูลจาก localStorage
+        function loadData() {
+            try {
+                const savedData = localStorage.getItem(STORAGE_KEY);
+                if (savedData) {
+                    students = JSON.parse(savedData);
+                    console.log('โหลดข้อมูลสำเร็จ:', students.length, 'คน');
+                } else {
+                    // ถ้าไม่มีข้อมูลเก่า ให้สร้างใหม่
+                    createInitialData();
+                }
+            } catch (error) {
+                console.error('เกิดข้อผิดพลาดในการโหลดข้อมูล:', error);
+                createInitialData();
+            }
+        }
+        
+        // ฟังก์ชันสร้างข้อมูลเริ่มต้น
+        function createInitialData() {
+            students = [];
+            for (let i = 1; i <= 40; i++) {
+                students.push({
+                    number: i,
+                    paid: 0,
+                    debt: 0,
+                    loan: 0
+                });
+            }
+            saveData();
+        }
+        
+        // ฟังก์ชันบันทึกข้อมูลลง localStorage
+        function saveData() {
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(students));
+                showSaveIndicator();
+                console.log('บันทึกข้อมูลสำเร็จ');
+            } catch (error) {
+                console.error('เกิดข้อผิดพลาดในการบันทึกข้อมูล:', error);
+                showNotification('เกิดข้อผิดพลาดในการบันทึกข้อมูล! ❌');
+            }
+        }
+        
+        // ฟังก์ชันแสดงตัวบ่งชี้การบันทึก
+        function showSaveIndicator() {
+            const indicator = document.getElementById('saveIndicator');
+            indicator.classList.add('show');
+            setTimeout(() => {
+                indicator.classList.remove('show');
+            }, 2000);
+        }
+        
+        // ฟังก์ชันส่งออกข้อมูล
+        function exportData() {
+            if (!isAdmin) return;
+            
+            const dataStr = JSON.stringify(students, null, 2);
+            const dataBlob = new Blob([dataStr], {type: 'application/json'});
+            const url = URL.createObjectURL(dataBlob);
+            
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `student_money_data_${new Date().toISOString().split('T')[0]}.json`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+            
+            showNotification('ส่งออกข้อมูลสำเร็จ! 📥');
+        }
+        
+        // ฟังก์ชันลบข้อมูลทั้งหมด
+        function clearAllData() {
+            if (!isAdmin) return;
+            
+            if (confirm('คุณแน่ใจหรือไม่ที่จะลบข้อมูลทั้งหมด? การกระทำนี้ไม่สามารถยกเลิกได้!')) {
+                localStorage.removeItem(STORAGE_KEY);
+                createInitialData();
+                updateSummary();
+                renderStudents();
+                showNotification('ลบข้อมูลทั้งหมดแล้ว! 🗑️');
+            }
         }
         
         function toggleAdmin() {
@@ -409,6 +530,7 @@
             if (!isAdmin) return;
             
             students[studentIndex][type] = Math.max(0, students[studentIndex][type] + amount);
+            saveData(); // บันทึกข้อมูลทันทีที่มีการเปลี่ยนแปลง
             updateSummary();
             renderStudents();
         }
@@ -417,6 +539,7 @@
             if (!isAdmin) return;
             
             students[studentIndex].loan = Math.max(0, parseInt(value) || 0);
+            saveData(); // บันทึกข้อมูลทันทีที่มีการเปลี่ยนแปลง
             updateSummary();
         }
         
@@ -477,12 +600,20 @@
         
         // เริ่มต้นโปรแกรม
         function init() {
+            loadData(); // โหลดข้อมูลจาก localStorage
             updateSummary();
             renderStudents();
         }
         
         // เรียกใช้เมื่อโหลดหน้าเว็บ
         window.onload = init;
+        
+        // บันทึกข้อมูลก่อนปิดหน้าเว็บ (สำรอง)
+        window.addEventListener('beforeunload', function() {
+            if (students.length > 0) {
+                saveData();
+            }
+        });
     </script>
 </body>
 </html>
